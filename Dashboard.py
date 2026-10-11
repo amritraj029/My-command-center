@@ -2,6 +2,14 @@ import json
 from pathlib import Path
 import streamlit as st
 
+from supabase import create_client, Client
+
+# Supabase Connection Setup
+SUPABASE_URL = st.secrets["SUPABASE_URL"]
+SUPABASE_KEY = st.secrets["SUPABASE_KEY"]
+
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+
 # 1. Page Configuration
 st.set_page_config(
     page_title="Nexus | Personal Command Center",
@@ -157,45 +165,59 @@ if menu == "📊 Executive Dashboard":
   )
 
 # ---------------------------------------------------------
-# 2. TASK MATRIX (To-Do)
+# 2. TASK MATRIX (To-Do - Supabase Connected)
 # ---------------------------------------------------------
 elif menu == "✅ Task Matrix":
-  st.title("✅ Task & Productivity Matrix")
+    st.title("✅ Task & Productivity Matrix")
 
-  with st.form("task_form", clear_on_submit=True):
-    col_t1, col_t2 = st.columns([3, 1])
-    with col_t1:
-      new_task = st.text_input(
-          "Task Description", placeholder="e.g., Build API automation script"
-      )
-    with col_t2:
-      priority = st.selectbox(
-          "Priority", ["🔥 High", "⚡ Medium", "☕ Low"], index=1
-      )
+    with st.form("task_form", clear_on_submit=True):
+        col_t1, col_t2 = st.columns([3, 1])
+        with col_t1:
+            new_task = st.text_input(
+                "Task Description", placeholder="e.g., Build API automation script"
+            )
+        with col_t2:
+            category = st.selectbox(
+                "Category / Priority", ["🔥 High", "⚡ Medium", "☕ Low"], index=1
+            )
 
-    submitted = st.form_submit_button("➕ Add Task to Matrix")
-    if submitted and new_task.strip():
-      user_data["tasks"].append({"task": new_task.strip(), "priority": priority})
-      save_data(user_data)
-      st.success("Task successfully logged!")
-      st.rerun()
+        submitted = st.form_submit_button("➕ Add Task to Matrix")
+        if submitted and new_task.strip():
+            # Supabase me task insert karne ka code
+            supabase.table("tasks").insert({
+                "task_name": new_task.strip(),
+                "status": "Pending",
+                "category": category
+            }).execute()
+            st.success("Task successfully logged to Cloud Database!")
+            st.rerun()
 
-  st.divider()
-  st.subheader("Active Tasks Queue")
+    st.divider()
+    st.subheader("Active Tasks Queue (Supabase Cloud)")
 
-  if user_data["tasks"]:
-    for index, t in enumerate(user_data["tasks"]):
-      cols = st.columns([0.1, 2.5, 1, 0.8])
-      cols[0].write("🔹")
-      cols[1].write(f"**{t['task']}**")
-      cols[2].write(f"Priority: {t['priority']}")
-      if cols[3].button("🗑️ Complete", key=f"task_{index}"):
-        user_data["tasks"].pop(index)
-        save_data(user_data)
-        st.rerun()
-  else:
-    st.success("🎉 Zero pending tasks! Your queue is completely clear.")
+    # Supabase se tasks fetch (load) karne ka code
+    try:
+        response = supabase.table("tasks").select("*").execute()
+        tasks_data = response.data
+    except Exception as e:
+        tasks_data = []
+        st.error(f"Error loading tasks from database: {e}")
 
+    if tasks_data:
+        for index, t in enumerate(tasks_data):
+            cols = st.columns([0.1, 2.5, 1, 0.8])
+            cols[0].write("🔹")
+            cols[1].write(f"**{t.get('task_name')}**")
+            cols[2].write(f"Category: {t.get('category')}")
+            
+            # Delete/Complete button
+            if cols[3].button("🗑️ Complete", key=f"supabase_task_{t.get('id', index)}"):
+                # Supabase se task delete karne ka code
+                supabase.table("tasks").delete().eq("id", t.get("id")).execute()
+                st.success("Task completed & removed from cloud!")
+                st.rerun()
+    else:
+        st.success("🎉 Zero pending tasks! Your cloud queue is completely clear.")
 # ---------------------------------------------------------
 # 3. ENTERTAINMENT HUB (Movies & Series)
 # ---------------------------------------------------------
